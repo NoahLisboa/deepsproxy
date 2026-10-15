@@ -113,6 +113,7 @@ LOG_LEVEL=info
 | `API_KEY` | Chave para autenticação de requests | - | Não |
 | `PLAYWRIGHT_HEADLESS` | Executar browser em modo headless | `true` | Não |
 | `PLAYWRIGHT_TIMEOUT` | Timeout para operações do Playwright (ms) | `30000` | Não |
+| `DEEPSEEK_PROFILE_DIR` | Diretório da sessão persistente autenticada do Chat Web | `deepseek_profile` | Não |
 | `ENABLE_LOCAL_TOOLS` | Expõe as tools locais automaticamente no chat | `false` | Não |
 | `TOOL_WORKSPACE` | Diretório permitido para a tool `read` | `.` | Não |
 | `TOOL_TIMEOUT_MS` | Timeout padrão de execução das tools | `30000` | Não |
@@ -447,6 +448,12 @@ npx playwright install-deps
 
 - Verifique se `API_KEY` no `.env` corresponde ao header enviado
 - Teste sem `API_KEY` configurada para isolar o problema
+
+### Login do Chat Web no Railway
+
+Este projeto usa o Chat Web em `chat.deepseek.com`, e não a API oficial do DeepSeek. Portanto, `API_KEY` protege o proxy, mas não faz login no DeepSeek. O diretório `DEEPSEEK_PROFILE_DIR` precisa ser um volume persistente contendo uma sessão autenticada do Playwright. Sem essa sessão, o proxy retorna `deepseek_login_required`.
+
+Não coloque `deepseek_profile/` nem cookies no Git. Faça o login em uma instância controlada, copie o perfil para o volume persistente do Railway e defina `DEEPSEEK_PROFILE_DIR` apontando para esse diretório. O perfil deve permanecer no volume entre redeploys.
 
 ### Timeout em requests
 

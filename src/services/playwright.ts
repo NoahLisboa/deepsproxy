@@ -21,7 +21,7 @@ export async function initPlaywright(headless = true) {
     return;
   }
 
-  const profilePath = path.resolve('deepseek_profile');
+  const profilePath = path.resolve(process.env.DEEPSEEK_PROFILE_DIR || 'deepseek_profile');
 
   context = await chromium.launchPersistentContext(profilePath, {
     headless,
@@ -105,7 +105,7 @@ export async function getDeepSeekHeaders(forceNew = false): Promise<{ headers: R
       throw new Error(`DeepSeek account is suspended; chat input is unavailable. Original DeepSeek message: ${detail}`);
     }
     if (state?.loginRequired) {
-      throw new Error('DeepSeek login is required; chat input is unavailable.');
+      throw new Error('DeepSeek login is required; chat input is unavailable. Configure a persistent DEEPSEEK_PROFILE_DIR volume and authenticate the Web Chat before using the proxy.');
     }
     throw new Error('DeepSeek chat input unavailable; page did not expose an input box.');
   });

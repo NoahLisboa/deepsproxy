@@ -706,7 +706,10 @@ export async function chatCompletions(c: Context) {
 
     let status = 500;
     let code = 'upstream_error';
-    if (/account is suspended/i.test(errMessage)) {
+    if (err instanceof SyntaxError && /JSON|property name/i.test(errMessage)) {
+      status = 400;
+      code = 'invalid_json';
+    } else if (/account is suspended/i.test(errMessage)) {
       status = 403;
       code = 'deepseek_account_suspended';
     } else if (/login is required/i.test(errMessage)) {
