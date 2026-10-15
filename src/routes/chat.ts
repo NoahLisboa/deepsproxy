@@ -16,6 +16,8 @@ import { OpenAIRequest, ChoiceDelta, Message, ToolCall, Usage } from '../utils/t
 import { robustParseJSON } from '../utils/json.ts';
 import { getModelTelemetry, recordSuccess, recordFailure } from '../services/telemetry.ts';
 import { compressMessages } from '../utils/compression.ts';
+import { isThinkingRequest, resolveModel } from '../models.ts';
+import { registry } from '../tools/registry.ts';
 
 const TOOL_START = '<tool_call>';
 const TOOL_END = '</tool_call>';
@@ -529,11 +531,16 @@ async function peekStream(stream: ReadableStream): Promise<{ isEmpty: boolean; p
 export async function chatCompletions(c: Context) {
   try {
     const body: OpenAIRequest = await c.req.json();
+    const { config } = resolveModel(body.model);
     const isStream = body.stream ?? false;
     const messages = body.messages || [];
+    const toolsForRequest = body.tools?.length
+      ? body.tools
+      : (process.env.ENABLE_LOCAL_TOOLS === 'true' ? registry.toOpenAITools() : undefined);
+    const toolBody = toolsForRequest ? { ...body, tools: toolsForRequest } : body;
 
-    const isThinkingModel = body.model.includes('thinking');
-    const isProModel = body.model.includes('pro');
+    const isThinkingModel = config.supportsThinking && isThinkingRequest(body.model, body);
+    const isProModel = config.isPro;
     const completionId = 'chatcmpl-' + uuidv4();
 
     if (!isStream) {
@@ -550,7 +557,7 @@ export async function chatCompletions(c: Context) {
         
         const compressed = compressMessages(messages, currentTargetLimit, serializeOpenAIMessages);
         const serialized = serializeOpenAIMessages(compressed);
-        const systemPrompt = appendToolInstructions(serialized.systemPrompt, body);
+        const systemPrompt = appendToolInstructions(serialized.systemPrompt, toolBody);
         const finalPrompt = systemPrompt ? `${systemPrompt}\n${serialized.prompt}` : serialized.prompt;
         const promptSize = finalPrompt.length;
         const promptTokens = Math.ceil(promptSize / 3.5);
@@ -565,7 +572,7 @@ export async function chatCompletions(c: Context) {
             body.model,
             promptTokens,
             result.uiSessionId,
-            (body as any).tools || []
+            toolsForRequest || []
           );
 
           if (parsed.content === '' && parsed.toolCalls.length === 0) {
@@ -631,7 +638,7 @@ export async function chatCompletions(c: Context) {
       
       const compressed = compressMessages(messages, currentTargetLimit, serializeOpenAIMessages);
       const serialized = serializeOpenAIMessages(compressed);
-      const systemPrompt = appendToolInstructions(serialized.systemPrompt, body);
+      const systemPrompt = appendToolInstructions(serialized.systemPrompt, toolBody);
       const finalPrompt = systemPrompt ? `${systemPrompt}\n${serialized.prompt}` : serialized.prompt;
       promptSizeUsed = finalPrompt.length;
 
@@ -686,7 +693,7 @@ export async function chatCompletions(c: Context) {
         body.model,
         promptTokens,
         uiSessionId,
-        (body as any).tools || [],
+        toolsForRequest || [],
         writeEvent
       );
 

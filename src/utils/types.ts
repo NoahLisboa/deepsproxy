@@ -49,6 +49,12 @@ export interface OpenAIRequest {
   model: string;
   messages: Message[];
   stream?: boolean;
+  thinking?: { type?: 'enabled' | 'disabled' } | null;
+  reasoning_effort?: 'none' | 'low' | 'medium' | 'high' | 'max' | 'xhigh' | 'minimal';
+  max_tokens?: number;
+  temperature?: number;
+  top_p?: number;
+  response_format?: { type: 'text' | 'json_object' };
   /** List of tools available to the LLM */
   tools?: FunctionToolDefinition[];
   /** Control whether the LLM must/can call tools */

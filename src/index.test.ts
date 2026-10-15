@@ -13,7 +13,7 @@ test('Health check endpoint returns status ok', async () => {
   assert.deepStrictEqual(body, { status: 'ok' });
 });
 
-test('Models endpoint returns deepseek-v4-flash and deepseek-v4-flash-thinking', async () => {
+test('Models endpoint returns only current official DeepSeek IDs', async () => {
   const req = new Request('http://localhost/v1/models');
   const res = await app.fetch(req);
   
@@ -22,15 +22,16 @@ test('Models endpoint returns deepseek-v4-flash and deepseek-v4-flash-thinking',
   const body = await res.json();
   assert.strictEqual(body.object, 'list');
   assert.ok(Array.isArray(body.data));
-  assert.ok(body.data.some((m: any) => m.id === 'deepseek-v4-flash'));
-  assert.ok(body.data.some((m: any) => m.id === 'deepseek-v4-flash-thinking'));
-  const flash = body.data.find((m: any) => m.id === 'deepseek-v4-flash');
+  assert.ok(body.data.some((m: any) => m.id === 'deepseek-flash'));
+  assert.ok(body.data.some((m: any) => m.id === 'deepseek-v4-pro'));
+  assert.ok(!body.data.some((m: any) => m.id.endsWith('-thinking')));
+  const flash = body.data.find((m: any) => m.id === 'deepseek-flash');
   assert.strictEqual(typeof flash.context_length, 'number');
   assert.ok(flash.context_length > 0);
   assert.strictEqual(typeof flash.max_context_tokens, 'number');
 });
 
-test('Chat Completions endpoint with deepseek-v4-flash-thinking (thinking enabled)', async () => {
+test('Chat Completions endpoint with deepseek-flash and thinking enabled', { skip: process.env.DEEPSEEK_RUN_LIVE_TESTS !== 'true' }, async () => {
   // Initialize playwright for this test
   // NOTE: Headless mode can sometimes fail Cloudflare checks. We use headless=false for the test
   // to ensure it matches the logged-in browser state if needed, or you can switch it to true.
@@ -38,8 +39,9 @@ test('Chat Completions endpoint with deepseek-v4-flash-thinking (thinking enable
 
   try {
     const payload = {
-      model: 'deepseek-v4-flash-thinking',
+      model: 'deepseek-flash',
       messages: [{ role: 'user', content: 'What is 99 * 182? Please think step by step.' }],
+      thinking: { type: 'enabled' },
       stream: true
     };
 

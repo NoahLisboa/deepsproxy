@@ -39,7 +39,7 @@ test('multiturn-thinking-tools: serializes complete OpenAI message history', asy
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'deepseek-v4-flash-thinking',
+        model: 'deepseek-flash',
         messages: [
           { role: 'user', content: 'hello' },
           { role: 'assistant', content: 'doing something', reasoning_content: 'thinking about hello', tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'test', arguments: '{}' } }] },
@@ -83,7 +83,7 @@ test('streaming-whitespace: preserves exact whitespace', async () => {
     const req = new Request('http://localhost/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'deepseek-v4-flash-thinking', messages: [{role: 'user', content: 'test'}], stream: true })
+      body: JSON.stringify({ model: 'deepseek-flash', messages: [{role: 'user', content: 'test'}], stream: true })
     });
     
     const res = await app.fetch(req);
@@ -131,7 +131,7 @@ test('caching-streaming and cache-control: returns prompt_tokens_details', async
     const req = new Request('http://localhost/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'deepseek-v4-flash-thinking', messages: [{role: 'user', content: 'test'}], stream: true })
+      body: JSON.stringify({ model: 'deepseek-flash', messages: [{role: 'user', content: 'test'}], stream: true })
     });
     
     const res = await app.fetch(req);
@@ -191,7 +191,7 @@ test('openai-requests-are-stateless: each request starts a fresh DeepSeek turn',
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'deepseek-v4-flash-thinking',
+        model: 'deepseek-flash',
         messages: [{ role: 'user', content: 'Turn 1' }]
       })
     });
@@ -206,7 +206,7 @@ test('openai-requests-are-stateless: each request starts a fresh DeepSeek turn',
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'deepseek-v4-flash-thinking',
+        model: 'deepseek-flash',
         messages: [
           { role: 'user', content: 'Turn 1' },
           { role: 'assistant', content: 'Response 1' },
@@ -253,7 +253,7 @@ test('non-stream chat completion returns OpenAI JSON instead of SSE', async () =
     const req = new Request('http://localhost/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'deepseek-v4-flash', messages: [{role: 'user', content: 'test'}], stream: false })
+      body: JSON.stringify({ model: 'deepseek-flash', messages: [{role: 'user', content: 'test'}], stream: false })
     });
 
     const res = await app.fetch(req);
@@ -288,7 +288,7 @@ test('hermes-style XML tool calls are converted to structured OpenAI tool_calls'
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'deepseek-v4-flash',
+        model: 'deepseek-flash',
         messages: [{ role: 'user', content: 'Abra o emulador MuMu' }],
         stream: false,
         tools: [{
@@ -337,7 +337,7 @@ test('streaming Hermes-style XML tool calls do not leak as content', async () =>
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'deepseek-v4-flash',
+        model: 'deepseek-flash',
         messages: [{ role: 'user', content: 'liste adb' }],
         stream: true,
         tools: [{ type: 'function', function: { name: 'terminal', parameters: { type: 'object', properties: { command: { type: 'string' } } } } }]
@@ -372,7 +372,7 @@ test('unclosed Hermes XML tool call at end of stream is recovered instead of ret
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'deepseek-v4-flash',
+        model: 'deepseek-flash',
         messages: [{ role: 'user', content: 'liste adb' }],
         stream: true,
         tools: [{ type: 'function', function: { name: 'terminal', parameters: { type: 'object', properties: { command: { type: 'string' } } } } }]
@@ -408,7 +408,7 @@ test('malformed internal tool call with lead-in returns safe content instead of 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'deepseek-v4-flash',
+        model: 'deepseek-flash',
         messages: [{ role: 'user', content: 'continue depois de erro adb' }],
         stream: true,
         tools: [{ type: 'function', function: { name: 'terminal', parameters: { type: 'object', properties: { command: { type: 'string' } } } } }]
@@ -496,7 +496,7 @@ test('telemetry and retry: reduces context limit on empty/error response and ret
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'deepseek-v4-flash-thinking',
+        model: 'deepseek-v4-pro',
         messages: [
           { role: 'system', content: 'Keep this instruction.' },
           { role: 'user', content: 'A'.repeat(300) },
@@ -506,7 +506,7 @@ test('telemetry and retry: reduces context limit on empty/error response and ret
     });
     
     const { getModelTelemetry } = await import('./services/telemetry.ts');
-    const stats = getModelTelemetry('deepseek-v4-flash-thinking');
+    const stats = getModelTelemetry('deepseek-v4-pro');
     stats.detectedLimit = 400;
     
     const res = await app.fetch(req);

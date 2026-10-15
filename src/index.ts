@@ -15,13 +15,19 @@ import { chatCompletions } from './routes/chat.ts';
 import * as dotenv from 'dotenv';
 import { initPlaywright } from './services/playwright.ts';
 import { getContextLength } from './services/telemetry.ts';
+import { CURRENT_MODELS } from './models.ts';
+import { registerBuiltinTools } from './tools/builtin.ts';
+import { registry } from './tools/registry.ts';
+import { executeToolCalls } from './tools/executor.ts';
 
 dotenv.config();
+registerBuiltinTools();
 
 export const app = new Hono();
 
 function modelEntry(id: string) {
-  const dynamicLimit = getContextLength(id);
+  const model = CURRENT_MODELS.find((entry) => entry.id === id);
+  const dynamicLimit = model ? Math.max(getContextLength(id), model.contextLength) : getContextLength(id);
   return {
     id,
     object: 'model',
@@ -33,7 +39,7 @@ function modelEntry(id: string) {
     context_length: dynamicLimit,
     max_context_tokens: dynamicLimit,
     max_input_tokens: dynamicLimit,
-    max_output_tokens: 8_000,
+    max_output_tokens: model?.maxOutputTokens ?? 384_000,
   };
 }
 
@@ -58,15 +64,28 @@ app.get('/health', (c) => c.json({ status: 'ok' }));
 // OpenAI compatible routes
 app.post('/v1/chat/completions', chatCompletions);
 
+// Direct tool execution endpoint for clients that want to run the registered
+// tools locally instead of handling OpenAI tool_calls themselves.
+app.get('/v1/tools', (c) => c.json({ object: 'list', data: registry.toOpenAITools() }));
+app.post('/v1/tools/execute', async (c) => {
+  try {
+    const body = await c.req.json();
+    if (!Array.isArray(body.tool_calls)) return c.json({ error: { message: 'tool_calls must be an array' } }, 400);
+    const results = await executeToolCalls(body.tool_calls, {
+      messages: body.messages || [],
+      turn: 0,
+      model: body.model || 'deepseek-flash',
+    });
+    return c.json({ object: 'tool.result.list', data: results });
+  } catch (error: any) {
+    return c.json({ error: { message: error?.message || String(error) } }, 400);
+  }
+});
+
 app.get('/v1/models', (c) => {
   return c.json({
     object: 'list',
-    data: [
-      modelEntry('deepseek-v4-flash'),
-      modelEntry('deepseek-v4-flash-thinking'),
-      modelEntry('deepseek-v4-pro'),
-      modelEntry('deepseek-v4-pro-thinking')
-    ]
+    data: CURRENT_MODELS.map((model) => modelEntry(model.id))
   });
 });
 

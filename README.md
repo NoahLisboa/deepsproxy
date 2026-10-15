@@ -95,6 +95,12 @@ API_KEY=sua-chave-secreta-aqui
 PLAYWRIGHT_HEADLESS=true
 PLAYWRIGHT_TIMEOUT=30000
 
+# Tools locais (opt-in para exposição automática no chat)
+ENABLE_LOCAL_TOOLS=false
+TOOL_WORKSPACE=.
+TOOL_TIMEOUT_MS=30000
+TOOL_MAX_OUTPUT_CHARS=20000
+
 # Logging
 LOG_LEVEL=info
 ```
@@ -107,6 +113,10 @@ LOG_LEVEL=info
 | `API_KEY` | Chave para autenticação de requests | - | Não |
 | `PLAYWRIGHT_HEADLESS` | Executar browser em modo headless | `true` | Não |
 | `PLAYWRIGHT_TIMEOUT` | Timeout para operações do Playwright (ms) | `30000` | Não |
+| `ENABLE_LOCAL_TOOLS` | Expõe as tools locais automaticamente no chat | `false` | Não |
+| `TOOL_WORKSPACE` | Diretório permitido para a tool `read` | `.` | Não |
+| `TOOL_TIMEOUT_MS` | Timeout padrão de execução das tools | `30000` | Não |
+| `TOOL_MAX_OUTPUT_CHARS` | Limite de saída das tools | `20000` | Não |
 
 \* Necessária para funcionalidades que requerem acesso à API DeepSeek
 
@@ -159,25 +169,13 @@ GET /v1/models
   "object": "list",
   "data": [
     {
-      "id": "deepseek-v4-flash",
-      "object": "model",
-      "created": 1715616000,
-      "owned_by": "deepseek"
-    },
-    {
-      "id": "deepseek-v4-flash-thinking",
+      "id": "deepseek-flash",
       "object": "model",
       "created": 1715616000,
       "owned_by": "deepseek"
     },
     {
       "id": "deepseek-v4-pro",
-      "object": "model",
-      "created": 1715616000,
-      "owned_by": "deepseek"
-    },
-    {
-      "id": "deepseek-v4-pro-thinking",
       "object": "model",
       "created": 1715616000,
       "owned_by": "deepseek"
@@ -195,10 +193,10 @@ POST /v1/chat/completions
 Content-Type: application/json
 ```
 
-**Request Body**:
+**Request Body** (thinking é controlado por `thinking.type`, não por um ID `-thinking`):
 ```json
 {
-  "model": "deepseek-flash-thinking",
+  "model": "deepseek-flash",
   "messages": [
     { "role": "user", "content": "Qual é a previsão do tempo?" }
   ],
@@ -229,7 +227,7 @@ Content-Type: application/json
   "id": "chatcmpl-xxx",
   "object": "chat.completion",
   "created": 1715616000,
-  "model": "deepseek-flash-thinking",
+  "model": "deepseek-flash",
   "choices": [
     {
       "index": 0,
@@ -259,7 +257,7 @@ Content-Type: application/json
 curl http://localhost:3000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "deepseek-flash-thinking",
+    "model": "deepseek-flash",
     "messages": [{"role": "user", "content": "Olá!"}]
   }'
 ```
@@ -275,7 +273,7 @@ const openai = new OpenAI({
 });
 
 const completion = await openai.chat.completions.create({
-  model: 'deepseek-thinking',
+  model: 'deepseek-flash',
   messages: [{ role: 'user', content: 'Explique TypeScript' }]
 });
 
@@ -293,7 +291,7 @@ client = OpenAI(
 )
 
 response = client.chat.completions.create(
-    model="deepseek-thinking",
+    model="deepseek-flash",
     messages=[{"role": "user", "content": "Hello!"}]
 )
 
@@ -301,6 +299,34 @@ print(response.choices[0].message.content)
 ```
 
 ---
+
+## 🧰 Tools locais
+
+O proxy registra tools OpenAI compatíveis para execução local. Consulte as definições com `GET /v1/tools` e execute chamadas estruturadas com `POST /v1/tools/execute`.
+
+Tools incluídas:
+
+- `pwrsh`: PowerShell (`pwsh` no Linux/macOS; `powershell.exe` no Windows).
+- `cmd`: CMD no Windows ou `sh` em Linux/macOS.
+- `read`: leitura de arquivos dentro de `TOOL_WORKSPACE`.
+- `list_dir`: lista arquivos e subpastas, inclusive recursivamente.
+- `write`: cria ou sobrescreve arquivos de texto dentro do workspace.
+- `delete`: exclui arquivos ou pastas explicitamente dentro do workspace.
+- `browser_click`, `browser_fill`, `browser_press`: interagem com a página atual.
+- `browser_snapshot`: salva uma captura da página no workspace.
+- `web_search`: busca pública via DuckDuckGo HTML.
+- `browser_open`: abre URLs no browser Playwright persistente.
+- `browser_user`: retorna URL, título e texto visível da página atual.
+
+Por segurança, a execução automática dessas tools nas requisições de chat só é ativada com `ENABLE_LOCAL_TOOLS=true`. O endpoint de execução exige chamadas explícitas e aplica limite de saída, timeout e confinamento de arquivos ao workspace.
+
+Exemplo:
+
+```bash
+curl http://localhost:3000/v1/tools/execute \
+  -H 'Content-Type: application/json' \
+  -d '{"tool_calls":[{"id":"call_1","name":"read","arguments":{"path":"README.md"}}]}'
+```
 
 ## 🔧 Comandos Disponíveis
 
