@@ -591,7 +591,7 @@ export async function chatCompletions(c: Context) {
           lastError = err;
           recordFailure(body.model, promptSize);
           // Login expiry is deterministic; retrying only delays the useful error.
-          if (/login is required|account is suspended/i.test(err.message || '')) break;
+          if (/login is required|account is suspended|timeout waiting for pow headers/i.test(err.message || '')) break;
           if (attempt >= maxAttempts) {
             break;
           }
@@ -665,7 +665,7 @@ export async function chatCompletions(c: Context) {
         console.error(`[Chat] Attempt ${attempt} (stream) failed:`, err.message);
         lastError = err;
         recordFailure(body.model, promptSizeUsed);
-        if (/login is required|account is suspended/i.test(err.message || '')) break;
+        if (/login is required|account is suspended|timeout waiting for pow headers/i.test(err.message || '')) break;
         if (attempt >= maxAttempts) {
           break;
         }
@@ -721,6 +721,9 @@ export async function chatCompletions(c: Context) {
     } else if (/chat input unavailable|Timeout waiting for chat input/i.test(errMessage)) {
       status = 409;
       code = 'deepseek_chat_unavailable';
+    } else if (/timeout waiting for pow headers/i.test(errMessage)) {
+      status = 504;
+      code = 'deepseek_pow_timeout';
     }
 
     return c.json({ error: { message: errMessage, type: code, code } }, status as any);
