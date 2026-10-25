@@ -22,6 +22,25 @@ import { registry } from '../tools/registry.ts';
 const TOOL_START = '<tool_call>';
 const TOOL_END = '</tool_call>';
 const TOOL_OPEN_RE = /<tool_call\b[^>]*>/i;
+const DSML_PREFIX = '<｜｜DSML｜｜';
+
+function normalizeDsmlToolCalls(buffer: string): string {
+  const invokeRe = /<｜｜DSML｜｜\s*invoke\b([^>]*)>([\s\S]*?)<\/｜｜DSML｜｜\s*invoke\s*>/gi;
+  return buffer.replace(invokeRe, (_full, attrs: string, body: string) => {
+    const nameMatch = attrs.match(/\bname\s*=\s*["']([^"']+)["']/i);
+    const name = nameMatch?.[1] || '';
+    const params: string[] = [];
+    const parameterRe = /<｜｜DSML｜｜\s*parameter\b([^>]*)>([\s\S]*?)<\/｜｜DSML｜｜\s*parameter\s*>/gi;
+    let parameter: RegExpExecArray | null;
+    while ((parameter = parameterRe.exec(body)) !== null) {
+      const paramName = parameter[1].match(/\bname\s*=\s*["']([^"']+)["']/i)?.[1];
+      if (paramName) params.push(`<parameter name="${paramName}">${parameter[2]}</parameter>`);
+    }
+    return `<tool_call${name ? ` name="${name}"` : ''}>${params.join('')}</tool_call>`;
+  })
+    .replace(/<｜｜DSML｜｜\s*calls\s*>/gi, '')
+    .replace(/<\/｜｜DSML｜｜\s*calls\s*>/gi, '');
+}
 
 type EmitChunk = (data: any) => Promise<void>;
 
@@ -211,6 +230,11 @@ function findPartialToolOpenIndex(buffer: string): number {
 
   for (let i = 1; i < TOOL_START.length; i++) {
     if (lower.endsWith(TOOL_START.substring(0, i))) return buffer.length - i;
+  }
+  const dsmlIdx = buffer.lastIndexOf(DSML_PREFIX);
+  if (dsmlIdx !== -1) {
+    const dsmlTail = buffer.substring(dsmlIdx);
+    if (!dsmlTail.includes('</｜｜DSML｜｜')) return dsmlIdx;
   }
   return -1;
 }
@@ -406,6 +430,7 @@ async function parseDeepSeekStreamToOpenAI(
         }
 
         contentEmitBuffer += vStr;
+        contentEmitBuffer = normalizeDsmlToolCalls(contentEmitBuffer);
 
         while (contentEmitBuffer.length > 0) {
           if (!insideTool) {
