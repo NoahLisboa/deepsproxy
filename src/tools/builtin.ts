@@ -9,7 +9,7 @@ import { activePage } from '../services/playwright.ts';
 const execFileAsync = promisify(execFile);
 const MAX_OUTPUT = Number(process.env.TOOL_MAX_OUTPUT_CHARS || '20000');
 const DEFAULT_TIMEOUT = Number(process.env.TOOL_TIMEOUT_MS || '30000');
-const workspaceRoot = resolve(process.env.TOOL_WORKSPACE || process.cwd());
+let workspaceRoot = resolve(process.env.TOOL_WORKSPACE || process.cwd());
 
 function bounded(value: string): string {
   if (value.length <= MAX_OUTPUT) return value;
@@ -107,7 +107,11 @@ export function registerBuiltinTools(): void {
     type: 'object', properties: { cd: { type: 'string', minLength: 1 } }, required: ['cd'],
   }, async (args) => {
     const requested = stringArg(args, 'cd');
-    return { path: resolve(requested), workspace: workspaceRoot };
+    const nextRoot = resolve(requested);
+    const info = await stat(nextRoot);
+    if (!info.isDirectory()) throw new Error(`Not a directory: ${nextRoot}`);
+    workspaceRoot = nextRoot;
+    return { path: workspaceRoot };
   });
 
   registry.register('glob', 'Encontra arquivos usando um padrão glob dentro do workspace.', {
