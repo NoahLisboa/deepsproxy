@@ -1,0 +1,8 @@
+2026/10/26-13:46:05.683 2540 Reusing MANIFEST C:\Users\Noah X Luzin7\Desktop\deepsproxy-main\deepseek_profile\Default\Local Storage\leveldb/MANIFEST-000001
+2026/10/26-13:46:06.367 2540 Recovering log #3
+2026/10/26-13:46:06.367 2540 Level-0 table #3: started
+2026/10/26-13:46:06.498 2540 Level-0 table #3: 18289 bytes OK
+2026/10/26-13:46:06.560 2540 Delete type=0 #3
+2026/10/26-13:56:51.612 c9c Level-0 table #6: started
+2026/10/26-13:56:51.652 c9c Level-0 table #6: 25264 bytes OK
+2026/10/26-13:56:51.681 c9c Delete type=0 #4
