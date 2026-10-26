@@ -35,6 +35,17 @@ function stringArg(args: Record<string, unknown>, name: string): string {
   return value;
 }
 
+function wildcardRegex(pattern: string): RegExp {
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^${escaped.replace(/\*\*/g, '§§').replace(/\*/g, '[^/\\\\]*').replace(/§§/g, '.*').replace(/\?/g, '[^/\\\\]')}$`, 'i');
+}
+
+async function filesUnder(directory: string): Promise<string[]> {
+  const entries = await readdir(directory, { withFileTypes: true, recursive: true } as any);
+  return entries.filter((entry: any) => entry.isFile?.()).map((entry: any) =>
+    entry.parentPath ? resolve(entry.parentPath, entry.name) : resolve(directory, entry.name));
+}
+
 async function shellTool(args: Record<string, unknown>, executable: string, fallback?: string) {
   const command = stringArg(args, 'command');
   const timeout = typeof args.timeout_ms === 'number' ? args.timeout_ms : DEFAULT_TIMEOUT;
@@ -73,18 +84,61 @@ export function registerBuiltinTools(): void {
   registry.register('read', 'Lê um arquivo de texto dentro do workspace do proxy.', {
     type: 'object', properties: {
       path: { type: 'string', minLength: 1 },
+      file_path: { type: 'string', minLength: 1 },
       start_line: { type: 'integer', minimum: 1 },
       end_line: { type: 'integer', minimum: 1 },
-    }, required: ['path'],
+      offset: { type: 'integer', minimum: 0 },
+      limit: { type: 'integer', minimum: 1 },
+    }, required: [],
   }, async (args) => {
-    const filePath = safePath(stringArg(args, 'path'));
+    const fileInput = typeof args.path === 'string' ? args.path : args.file_path;
+    if (typeof fileInput !== 'string' || !fileInput.trim()) throw new Error('path or file_path must be provided');
+    const filePath = safePath(fileInput);
     const info = await stat(filePath);
     if (!info.isFile()) throw new Error('path is not a regular file');
     const text = await readFile(filePath, 'utf8');
     const lines = text.split(/\r?\n/);
-    const start = typeof args.start_line === 'number' ? args.start_line - 1 : 0;
-    const end = typeof args.end_line === 'number' ? args.end_line : lines.length;
+    const start = typeof args.offset === 'number' ? args.offset : (typeof args.start_line === 'number' ? args.start_line - 1 : 0);
+    const end = typeof args.limit === 'number' ? start + args.limit : (typeof args.end_line === 'number' ? args.end_line : lines.length);
     return bounded(lines.slice(start, end).map((line, index) => `${start + index + 1}: ${line}`).join('\n'));
+  });
+
+  registry.register('working_directory', 'Seleciona ou informa o diretório de trabalho do projeto.', {
+    type: 'object', properties: { cd: { type: 'string', minLength: 1 } }, required: ['cd'],
+  }, async (args) => {
+    const requested = stringArg(args, 'cd');
+    return { path: resolve(requested), workspace: workspaceRoot };
+  });
+
+  registry.register('glob', 'Encontra arquivos usando um padrão glob dentro do workspace.', {
+    type: 'object', properties: { pattern: { type: 'string', minLength: 1 }, path: { type: 'string' } }, required: ['pattern'],
+  }, async (args) => {
+    const pattern = stringArg(args, 'pattern').replace(/\\/g, '/');
+    const base = safePath(typeof args.path === 'string' && args.path.trim() ? args.path : '.');
+    const files = await filesUnder(base);
+    const relative = files.map((file) => file.replace(`${workspaceRoot}/`, '').replace(/\\/g, '/'));
+    const matcher = wildcardRegex(pattern);
+    return relative.filter((file) => matcher.test(file) || matcher.test(file.replace(/^\.\//, ''))).slice(0, 2000);
+  });
+
+  registry.register('grep', 'Procura texto ou expressão regular nos arquivos do workspace.', {
+    type: 'object', properties: { pattern: { type: 'string', minLength: 1 }, path: { type: 'string' }, file_path: { type: 'string' } }, required: ['pattern'],
+  }, async (args) => {
+    const pattern = stringArg(args, 'pattern');
+    const targetInput = typeof args.path === 'string' ? args.path : (typeof args.file_path === 'string' ? args.file_path : '.');
+    const target = safePath(targetInput);
+    const info = await stat(target);
+    const files = info.isFile() ? [target] : await filesUnder(target);
+    const matcher = new RegExp(pattern, 'i');
+    const matches: string[] = [];
+    for (const file of files) {
+      try {
+        const lines = (await readFile(file, 'utf8')).split(/\r?\n/);
+        lines.forEach((line, index) => { if (matcher.test(line)) matches.push(`${file.replace(`${workspaceRoot}/`, '')}:${index + 1}:${line}`); });
+      } catch { /* ignore binary/unreadable files */ }
+      if (matches.length >= 2000) break;
+    }
+    return bounded(matches.join('\n'));
   });
 
   registry.register('list_dir', 'Lista arquivos e subpastas dentro do workspace do proxy.', {

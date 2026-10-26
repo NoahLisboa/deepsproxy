@@ -18,6 +18,7 @@ import { getModelTelemetry, recordSuccess, recordFailure } from '../services/tel
 import { compressMessages } from '../utils/compression.ts';
 import { isThinkingRequest, resolveModel } from '../models.ts';
 import { registry } from '../tools/registry.ts';
+import { executeToolCalls } from '../tools/executor.ts';
 
 const TOOL_START = '<tool_call>';
 const TOOL_END = '</tool_call>';
@@ -553,6 +554,93 @@ async function peekStream(stream: ReadableStream): Promise<{ isEmpty: boolean; p
   }
 }
 
+async function runAutomaticToolLoop(
+  messages: Message[],
+  body: OpenAIRequest,
+  model: string,
+  isThinkingModel: boolean,
+  isProModel: boolean,
+  toolsForRequest: any[],
+  completionId: string,
+): Promise<ParsedCompletion> {
+  const workingMessages: Message[] = messages.map((message) => ({ ...message }));
+  const maxToolTurns = Number(process.env.DEEPSPROXY_MAX_TOOL_TURNS || '8');
+
+  for (let toolTurn = 0; toolTurn <= maxToolTurns; toolTurn++) {
+    let parsedResult: ParsedCompletion | null = null;
+    let lastError: any = null;
+    let promptSize = 0;
+
+    for (let attempt = 1; attempt <= 3 && !parsedResult; attempt++) {
+      const telemetry = getModelTelemetry(model);
+      const compressed = compressMessages(workingMessages, telemetry.detectedLimit, serializeOpenAIMessages);
+      const serialized = serializeOpenAIMessages(compressed);
+      const toolBody = toolsForRequest.length ? { ...body, tools: toolsForRequest } : body;
+      const systemPrompt = appendToolInstructions(serialized.systemPrompt, toolBody);
+      const finalPrompt = systemPrompt ? `${systemPrompt}\n${serialized.prompt}` : serialized.prompt;
+      promptSize = finalPrompt.length;
+
+      try {
+        console.log(`[Chat] Tool loop ${toolTurn}, attempt ${attempt}/3, prompt length ${promptSize} chars.`);
+        const result = await createDeepSeekStream(finalPrompt, isThinkingModel, isProModel);
+        const parsed = await parseDeepSeekStreamToOpenAI(
+          result.stream,
+          completionId,
+          model,
+          Math.ceil(promptSize / 3.5),
+          result.uiSessionId,
+          toolsForRequest,
+        );
+        if (parsed.content === '' && parsed.toolCalls.length === 0) {
+          recordFailure(model, promptSize);
+          continue;
+        }
+        recordSuccess(model, promptSize);
+        parsedResult = parsed;
+      } catch (error: any) {
+        lastError = error;
+        recordFailure(model, promptSize);
+        if (/login is required|account is suspended|timeout waiting for pow headers/i.test(error?.message || '')) break;
+        if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    }
+
+    if (!parsedResult) throw lastError || new Error('DeepSeek returned an empty response.');
+    if (parsedResult.toolCalls.length === 0) return parsedResult;
+    if (toolTurn >= maxToolTurns) {
+      throw new Error(`Automatic tool execution exceeded DEEPSPROXY_MAX_TOOL_TURNS (${maxToolTurns}).`);
+    }
+
+    const calls = parsedResult.toolCalls.map((call) => {
+      let args: Record<string, unknown> = {};
+      try { args = JSON.parse(call.function.arguments || '{}'); } catch { args = { raw_arguments: call.function.arguments }; }
+      return { id: call.id || `call_${uuidv4()}`, name: call.function.name, arguments: args };
+    });
+    console.log(`[Chat] Executing ${calls.length} tool call(s): ${calls.map((call) => call.name).join(', ')}`);
+    const results = await executeToolCalls(calls, { messages: workingMessages, turn: toolTurn, model });
+
+    workingMessages.push({
+      role: 'assistant',
+      content: parsedResult.content || null,
+      tool_calls: parsedResult.toolCalls.map((call, index) => ({
+        id: calls[index].id,
+        type: 'function',
+        function: call.function,
+      })),
+    });
+    for (const result of results) {
+      workingMessages.push({
+        role: 'tool',
+        tool_call_id: result.toolCallId,
+        name: result.name,
+        content: result.result,
+      });
+    }
+  }
+
+  throw new Error('Automatic tool execution ended without a final response.');
+}
+
 export async function chatCompletions(c: Context) {
   try {
     const body: OpenAIRequest = await c.req.json();
@@ -567,6 +655,45 @@ export async function chatCompletions(c: Context) {
     const isThinkingModel = config.supportsThinking && isThinkingRequest(body.model, body);
     const isProModel = config.isPro;
     const completionId = 'chatcmpl-' + uuidv4();
+
+    // With local tools enabled, consume DSML/tool calls inside the proxy and
+    // continue the same DeepSeek conversation until a final answer exists.
+    if (process.env.ENABLE_LOCAL_TOOLS === 'true') {
+      const parsed = await runAutomaticToolLoop(
+        messages,
+        body,
+        body.model,
+        isThinkingModel,
+        isProModel,
+        toolsForRequest || registry.toOpenAITools(),
+        completionId,
+      );
+
+      if (!isStream) {
+        const message: any = { role: 'assistant', content: parsed.content };
+        if (parsed.reasoningContent) message.reasoning_content = parsed.reasoningContent;
+        return c.json({
+          id: completionId,
+          object: 'chat.completion',
+          created: Math.floor(Date.now() / 1000),
+          model: body.model,
+          choices: [{ index: 0, message, logprobs: null, finish_reason: parsed.finishReason }],
+          usage: parsed.usage,
+        });
+      }
+
+      c.header('Content-Type', 'text/event-stream');
+      c.header('Cache-Control', 'no-cache');
+      c.header('Connection', 'keep-alive');
+      return honoStream(c, async (streamWriter: any) => {
+        const writeEvent = async (data: any) => streamWriter.write(`data: ${JSON.stringify(data)}\n\n`);
+        await writeEvent(makeChunk(completionId, body.model, { role: 'assistant', content: '' }));
+        if (parsed.reasoningContent) await writeEvent(makeChunk(completionId, body.model, { reasoning_content: parsed.reasoningContent }));
+        if (parsed.content) await writeEvent(makeChunk(completionId, body.model, { content: parsed.content }));
+        await writeEvent(makeChunk(completionId, body.model, {}, parsed.finishReason, parsed.usage));
+        await streamWriter.write('data: [DONE]\n\n');
+      });
+    }
 
     if (!isStream) {
       let attempt = 0;
