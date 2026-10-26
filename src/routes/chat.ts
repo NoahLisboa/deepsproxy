@@ -589,7 +589,7 @@ export async function chatCompletions(c: Context) {
 
         try {
           console.log(`[Chat] Attempt ${attempt}/${maxAttempts} (non-stream) with prompt length ${promptSize} chars.`);
-          const result = await createDeepSeekStream(finalPrompt, isThinkingModel, isProModel, null);
+          const result = await createDeepSeekStream(finalPrompt, isThinkingModel, isProModel);
           
           const parsed = await parseDeepSeekStreamToOpenAI(
             result.stream,
@@ -671,7 +671,7 @@ export async function chatCompletions(c: Context) {
 
       try {
         console.log(`[Chat] Attempt ${attempt}/${maxAttempts} (stream) with prompt length ${promptSizeUsed} chars.`);
-        const result = await createDeepSeekStream(finalPrompt, isThinkingModel, isProModel, null);
+        const result = await createDeepSeekStream(finalPrompt, isThinkingModel, isProModel);
         
         // Peek the stream to verify it has content
         const { isEmpty, peekedStream } = await peekStream(result.stream);

@@ -63,12 +63,13 @@ export async function getDeepSeekHeaders(forceNew = false): Promise<{ headers: R
     throw new Error('Playwright not initialized');
   }
 
-  // Navigate to deepseek chat. If forceNew is true or we're not on deepseek, go to home page.
+  // Navigate to home only for the first chat or an explicit new session. On
+  // subsequent requests, staying on the current /chat/<id> is what preserves
+  // the single conversation instead of creating a new chat every time.
   const currentUrl = activePage.url();
   const isOnDeepSeek = currentUrl.includes('chat.deepseek.com');
-  const isOnSpecificChat = isOnDeepSeek && /\/chat\/\d+/.test(currentUrl);
 
-  if (!isOnDeepSeek || forceNew || isOnSpecificChat) {
+  if (!isOnDeepSeek || forceNew) {
     await activePage.goto('https://chat.deepseek.com/', { waitUntil: 'domcontentloaded' });
   }
 

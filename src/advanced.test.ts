@@ -4,6 +4,7 @@ import assert from 'node:assert';
 process.env.TEST_MOCK_PLAYWRIGHT = 'true';
 
 import { app } from './index.ts';
+import { resetDeepSeekSession } from './services/deepseek.ts';
 
 // Helper to mock the fetch global for testing empty response retry and caching logic
 function setupFetchMock(handler: (url: string, init?: RequestInit) => Response | Promise<Response>) {
@@ -163,7 +164,7 @@ test('caching-streaming and cache-control: returns prompt_tokens_details', async
   }
 });
 
-test('openai-requests-are-stateless: each request starts a fresh DeepSeek turn', async () => {
+test('openai-requests-reuse-one-deepseek-chat: parent message is carried forward', async () => {
   let capturedPayloads: any[] = [];
 
   const restore = setupFetchMock((url, init) => {
@@ -185,6 +186,7 @@ test('openai-requests-are-stateless: each request starts a fresh DeepSeek turn',
   });
 
   try {
+    resetDeepSeekSession();
     process.env.TEST_SESSION_ID = 'test-session-parent-tracking';
     // Turn 1
     const req1 = new Request('http://localhost/v1/chat/completions', {
@@ -220,12 +222,10 @@ test('openai-requests-are-stateless: each request starts a fresh DeepSeek turn',
     await res2.text();
 
     assert.strictEqual(capturedPayloads.length, 2);
-    // In Turn 1, parent_message_id should be null (mock-session is fresh)
+    // Turn 1 starts the single persistent DeepSeek conversation.
     assert.strictEqual(capturedPayloads[0].parent_message_id, null);
-    // OpenAI chat/completions requests are self-contained; the proxy must not
-    // reuse DeepSeek's previous parent_message_id because compressed or edited
-    // OpenAI histories no longer match the browser-side DeepSeek thread.
-    assert.strictEqual(capturedPayloads[1].parent_message_id, null, 'Turn 2 should start a fresh DeepSeek turn');
+    // Subsequent turns reuse the same DeepSeek conversation.
+    assert.strictEqual(capturedPayloads[1].parent_message_id, 1001, 'Turn 2 should reuse the single DeepSeek chat');
     assert.strictEqual(
       capturedPayloads[1].prompt,
       'User: Turn 1\n\nAssistant: Response 1\n\nUser: Turn 2\n\n',
