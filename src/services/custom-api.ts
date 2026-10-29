@@ -1,7 +1,6 @@
 import type { Context } from 'hono';
 
 export const CUSTOM_MODEL_IDS = [
-  'anyrouter/free',
   'dots-studio/dots-3-note-preview',
   'nvidia/nemotron-3-ultra-550b-a55b',
   'poolside/laguna-s-2.1',
@@ -72,7 +71,7 @@ export async function customChatCompletions(c: Context): Promise<Response> {
   }
   const body = JSON.stringify({
     ...parsedBody,
-    model: parsedBody.model || process.env.ANYROUTER_MODEL || 'anyrouter/free',
+    model: parsedBody.model || process.env.ANYROUTER_MODEL || 'dots-studio/dots-3-note-preview',
   });
   const upstream = await fetch(apiUrl('chat/completions'), {
     method: 'POST',
