@@ -1,6 +1,7 @@
 import type { Context } from 'hono';
 
 export const CUSTOM_MODEL_IDS = [
+  'anyrouter/free',
   'dots-studio/dots-3-note-preview',
   'nvidia/nemotron-3-ultra-550b-a55b',
   'poolside/laguna-s-2.1',
@@ -57,15 +58,22 @@ export function customModelEntries() {
 }
 
 function apiUrl(path: string): string {
-  const base = (process.env.CUSTOM_API_BASE_URL || 'https://anyrouter.dev/api/v1').replace(/\/$/, '');
+  const base = (process.env.ANYROUTER_API_BASE_URL || 'https://anyrouter.dev/api/v1').replace(/\/$/, '');
   return `${base}/${path.replace(/^\//, '')}`;
 }
 
 export async function customChatCompletions(c: Context): Promise<Response> {
-  const apiKey = process.env.CUSTOM_API_KEY;
-  if (!apiKey) return c.json({ error: { message: 'CUSTOM_API_KEY is not configured' } }, 500);
+  const apiKey = process.env.ANYROUTER_API_KEY;
+  if (!apiKey) return c.json({ error: { message: 'ANYROUTER_API_KEY is not configured' } }, 500);
 
-  const body = await c.req.text();
+  const parsedBody = await c.req.json().catch(() => null) as Record<string, any> | null;
+  if (!parsedBody || typeof parsedBody !== 'object') {
+    return c.json({ error: { message: 'Request body must be valid JSON' } }, 400);
+  }
+  const body = JSON.stringify({
+    ...parsedBody,
+    model: parsedBody.model || process.env.ANYROUTER_MODEL || 'anyrouter/free',
+  });
   const upstream = await fetch(apiUrl('chat/completions'), {
     method: 'POST',
     headers: {
