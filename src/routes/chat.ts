@@ -26,6 +26,20 @@ const TOOL_OPEN_RE = /<tool_call\b[^>]*>/i;
 const DSML_PREFIX = '<｜｜DSML｜｜';
 
 function normalizeDsmlToolCalls(buffer: string): string {
+  // Dots Studio emits either bare <invoke> blocks or the same blocks wrapped
+  // in <dots_function_call>. Normalize both forms to the internal parser tag.
+  buffer = buffer
+    .replace(/<dots_function_call\s*>/gi, '')
+    .replace(/<\/dots_function_call\s*>/gi, '')
+    .replace(/<dots_function_call\s*\/?>/gi, '');
+
+  const dotsInvokeRe = /<invoke\b([^>]*)>([\s\S]*?)<\/invoke\s*>/gi;
+  buffer = buffer.replace(dotsInvokeRe, (_full, attrs: string, body: string) => {
+    const nameMatch = attrs.match(/\bname\s*=\s*["']([^"']+)["']/i);
+    const name = nameMatch?.[1] || '';
+    return `<tool_call${name ? ` name="${name}"` : ''}>${body}</tool_call>`;
+  });
+
   const invokeRe = /<｜｜DSML｜｜\s*invoke\b([^>]*)>([\s\S]*?)<\/｜｜DSML｜｜\s*invoke\s*>/gi;
   return buffer.replace(invokeRe, (_full, attrs: string, body: string) => {
     const nameMatch = attrs.match(/\bname\s*=\s*["']([^"']+)["']/i);
@@ -226,6 +240,10 @@ function findToolOpen(buffer: string): { startIdx: number; endIdx: number; openT
 
 function findPartialToolOpenIndex(buffer: string): number {
   const lower = buffer.toLowerCase();
+  const invokeIdx = lower.lastIndexOf('<invoke');
+  if (invokeIdx !== -1 && lower.indexOf('>', invokeIdx) === -1) return invokeIdx;
+  const dotsIdx = lower.lastIndexOf('<dots_function_call');
+  if (dotsIdx !== -1 && lower.indexOf('>', dotsIdx) === -1) return dotsIdx;
   const idx = lower.lastIndexOf('<tool_call');
   if (idx !== -1 && lower.indexOf('>', idx) === -1) return idx;
 

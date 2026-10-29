@@ -10,12 +10,13 @@
 
 import { chromium, BrowserContext, Page } from 'playwright';
 import path from 'path';
+import { readFile, writeFile } from 'node:fs/promises';
 
 let context: BrowserContext | null = null;
 export let activePage: Page | null = null;
 let currentHeaders: Record<string, string> = {};
 
-export async function initPlaywright(headless = true) {
+export async function initPlaywright(headless = true, storageStateFile?: string) {
   if (process.env.TEST_MOCK_PLAYWRIGHT) return;
   if (context) {
     return;
@@ -23,8 +24,13 @@ export async function initPlaywright(headless = true) {
 
   const profilePath = path.resolve(process.env.DEEPSEEK_PROFILE_DIR || 'deepseek_profile');
 
+  const storageState = storageStateFile
+    ? JSON.parse(await readFile(storageStateFile, 'utf8'))
+    : undefined;
+
   context = await chromium.launchPersistentContext(profilePath, {
     headless,
+    ...(storageState ? { storageState } : {}),
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
     args: [
       '--disable-blink-features=AutomationControlled',
@@ -47,6 +53,20 @@ export async function closePlaywright() {
     context = null;
     activePage = null;
   }
+}
+
+export async function exportStorageState(outputFile: string): Promise<void> {
+  if (!context) throw new Error('Playwright is not initialized');
+  await context.storageState({ path: outputFile });
+}
+
+export async function importStorageState(state: unknown): Promise<void> {
+  if (!state || typeof state !== 'object') throw new Error('Invalid storageState');
+  const profilePath = path.resolve(process.env.DEEPSEEK_PROFILE_DIR || 'deepseek_profile');
+  const stateFile = path.join(profilePath, '.deepsproxy-storage-state.json');
+  await writeFile(stateFile, JSON.stringify(state), 'utf8');
+  await closePlaywright();
+  await initPlaywright(true, stateFile);
 }
 
 /**

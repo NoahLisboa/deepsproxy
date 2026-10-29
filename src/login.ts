@@ -8,7 +8,7 @@
  * Modified By: Pedro Farias
  */
 
-import { initPlaywright, closePlaywright, activePage } from './services/playwright.ts';
+import { initPlaywright, closePlaywright, activePage, exportStorageState } from './services/playwright.ts';
 
 async function main() {
   console.log('Opening DeepSeek to allow login...');
@@ -20,10 +20,16 @@ async function main() {
     process.exit(1);
   }
   console.log('Browser opened. Please login to chat.deepseek.com.');
-  console.log('Once you are fully logged in and can see the chat interface, close the browser window or press Ctrl+C here.');
+  console.log('Once you are fully logged in and can see the chat interface, press Ctrl+C here to export storage-state.json.');
   
   // Wait indefinitely until user closes the process
   process.on('SIGINT', async () => {
+    try {
+      await exportStorageState(process.env.STORAGE_STATE_FILE || 'storage-state.json');
+      console.log(`Saved ${process.env.STORAGE_STATE_FILE || 'storage-state.json'}`);
+    } catch (error: any) {
+      console.error('Could not export storage state:', error?.message || error);
+    }
     console.log('Closing browser...');
     await closePlaywright();
     process.exit(0);
