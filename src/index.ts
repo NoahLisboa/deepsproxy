@@ -19,7 +19,6 @@ import { CURRENT_MODELS } from './models.ts';
 import { registerBuiltinTools } from './tools/builtin.ts';
 import { registry } from './tools/registry.ts';
 import { executeToolCalls } from './tools/executor.ts';
-import { customChatCompletions, customModelEntries } from './services/custom-api.ts';
 
 dotenv.config();
 registerBuiltinTools();
@@ -97,9 +96,7 @@ app.post('/login/import', async (c) => {
 app.get('/health', (c) => c.json({ status: 'ok' }));
 
 // OpenAI compatible routes
-app.post('/v1/chat/completions', (c) =>
-  process.env.PROXY_BACKEND === 'custom' ? customChatCompletions(c) : chatCompletions(c)
-);
+app.post('/v1/chat/completions', chatCompletions);
 
 // Direct tool execution endpoint for clients that want to run the registered
 // tools locally instead of handling OpenAI tool_calls themselves.
@@ -120,9 +117,6 @@ app.post('/v1/tools/execute', async (c) => {
 });
 
 app.get('/v1/models', (c) => {
-  if (process.env.PROXY_BACKEND === 'custom') {
-    return c.json({ object: 'list', data: customModelEntries() });
-  }
   return c.json({
     object: 'list',
     data: CURRENT_MODELS.map((model) => modelEntry(model.id))
@@ -133,11 +127,9 @@ app.get('/v1/models', (c) => {
 import { fileURLToPath } from 'url';
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const backend = process.env.PROXY_BACKEND === 'custom' ? 'custom' : 'deepseek';
-  console.log(`Backend selecionado: ${backend}`);
-  console.log('Opções: PROXY_BACKEND=deepseek | PROXY_BACKEND=custom');
-  (backend === 'custom' ? Promise.resolve() : initPlaywright()).then(() => {
-    if (backend !== 'custom') console.log('Playwright initialized.');
+  console.log('Backend selecionado: deepseek');
+  initPlaywright().then(() => {
+    console.log('Playwright initialized.');
     const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;
     console.log(`Server is running on port ${port}`);
 
