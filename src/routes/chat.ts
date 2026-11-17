@@ -20,6 +20,17 @@ import { isThinkingRequest, resolveModel } from '../models.ts';
 import { registry } from '../tools/registry.ts';
 import { executeToolCalls } from '../tools/executor.ts';
 
+const DEFAULT_MAX_PROMPT_CHARS = 60_000;
+
+function getPromptLimit(model: string): number {
+  const telemetryLimit = getModelTelemetry(model).detectedLimit;
+  const configuredLimit = Number(process.env.DEEPSPROXY_MAX_PROMPT_CHARS || DEFAULT_MAX_PROMPT_CHARS);
+  const safeConfiguredLimit = Number.isFinite(configuredLimit) && configuredLimit >= 4_000
+    ? configuredLimit
+    : DEFAULT_MAX_PROMPT_CHARS;
+  return Math.min(telemetryLimit, safeConfiguredLimit);
+}
+
 const TOOL_START = '<tool_call>';
 const TOOL_END = '</tool_call>';
 const TOOL_OPEN_RE = /<tool_call\b[^>]*>/i;
@@ -590,8 +601,7 @@ async function runAutomaticToolLoop(
     let promptSize = 0;
 
     for (let attempt = 1; attempt <= 3 && !parsedResult; attempt++) {
-      const telemetry = getModelTelemetry(model);
-      const compressed = compressMessages(workingMessages, telemetry.detectedLimit, serializeOpenAIMessages);
+      const compressed = compressMessages(workingMessages, getPromptLimit(model), serializeOpenAIMessages);
       const serialized = serializeOpenAIMessages(compressed);
       const toolBody = toolsForRequest.length ? { ...body, tools: toolsForRequest } : body;
       const systemPrompt = appendToolInstructions(serialized.systemPrompt, toolBody);
@@ -722,8 +732,7 @@ export async function chatCompletions(c: Context) {
 
       while (attempt < maxAttempts) {
         attempt++;
-        const telemetry = getModelTelemetry(body.model);
-        const currentTargetLimit = telemetry.detectedLimit;
+        const currentTargetLimit = getPromptLimit(body.model);
         
         const compressed = compressMessages(messages, currentTargetLimit, serializeOpenAIMessages);
         const serialized = serializeOpenAIMessages(compressed);
@@ -805,8 +814,7 @@ export async function chatCompletions(c: Context) {
 
     while (attempt < maxAttempts) {
       attempt++;
-      const telemetry = getModelTelemetry(body.model);
-      const currentTargetLimit = telemetry.detectedLimit;
+      const currentTargetLimit = getPromptLimit(body.model);
       
       const compressed = compressMessages(messages, currentTargetLimit, serializeOpenAIMessages);
       const serialized = serializeOpenAIMessages(compressed);
