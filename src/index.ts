@@ -99,6 +99,8 @@ app.get('/health', (c) => c.json({ status: 'ok' }));
 // OpenAI compatible routes
 app.post('/v1/chat/completions', chatCompletions);
 app.post('/v1/messages', (c) => messages(c, chatCompletions));
+app.post('/v1/messages/', (c) => messages(c, chatCompletions));
+app.post('/v1//messages', (c) => messages(c, chatCompletions));
 
 // Direct tool execution endpoint for clients that want to run the registered
 // tools locally instead of handling OpenAI tool_calls themselves.
