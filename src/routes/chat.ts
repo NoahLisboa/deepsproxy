@@ -31,6 +31,12 @@ function getPromptLimit(model: string): number {
   return Math.min(telemetryLimit, safeConfiguredLimit);
 }
 
+function localToolsEnabled(): boolean {
+  return ['true', '1', 'yes', 'on'].includes(
+    String(process.env.ENABLE_LOCAL_TOOLS || '').trim().toLowerCase(),
+  );
+}
+
 const TOOL_START = '<tool_call>';
 const TOOL_END = '</tool_call>';
 const TOOL_OPEN_RE = /<tool_call\b[^>]*>/i;
@@ -677,7 +683,7 @@ export async function chatCompletions(c: Context) {
     const messages = body.messages || [];
     const toolsForRequest = body.tools?.length
       ? body.tools
-      : (process.env.ENABLE_LOCAL_TOOLS === 'true' ? registry.toOpenAITools() : undefined);
+      : (localToolsEnabled() ? registry.toOpenAITools() : undefined);
     const toolBody = toolsForRequest ? { ...body, tools: toolsForRequest } : body;
 
     const isThinkingModel = config.supportsThinking && isThinkingRequest(body.model, body);
@@ -686,7 +692,7 @@ export async function chatCompletions(c: Context) {
 
     // With local tools enabled, consume DSML/tool calls inside the proxy and
     // continue the same DeepSeek conversation until a final answer exists.
-    if (process.env.ENABLE_LOCAL_TOOLS === 'true') {
+    if (localToolsEnabled()) {
       const parsed = await runAutomaticToolLoop(
         messages,
         body,

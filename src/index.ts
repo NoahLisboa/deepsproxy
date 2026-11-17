@@ -132,6 +132,7 @@ import { fileURLToPath } from 'url';
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   console.log('Backend selecionado: deepseek');
+  console.log(`Tools automáticas: ${['true', '1', 'yes', 'on'].includes(String(process.env.ENABLE_LOCAL_TOOLS || '').trim().toLowerCase()) ? 'ativadas' : 'desativadas'}`);
   initPlaywright().then(() => {
     console.log('Playwright initialized.');
     const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;
