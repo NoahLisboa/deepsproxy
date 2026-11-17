@@ -12,6 +12,7 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { chatCompletions } from './routes/chat.ts';
+import { messages } from './routes/messages.ts';
 import * as dotenv from 'dotenv';
 import { initPlaywright, importStorageState } from './services/playwright.ts';
 import { getContextLength } from './services/telemetry.ts';
@@ -97,6 +98,7 @@ app.get('/health', (c) => c.json({ status: 'ok' }));
 
 // OpenAI compatible routes
 app.post('/v1/chat/completions', chatCompletions);
+app.post('/v1/messages', (c) => messages(c, chatCompletions));
 
 // Direct tool execution endpoint for clients that want to run the registered
 // tools locally instead of handling OpenAI tool_calls themselves.
